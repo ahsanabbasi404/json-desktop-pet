@@ -29,6 +29,14 @@ On Windows you can also just double-click **`launch-pet.cmd`**.
 | --- | --- |
 | `Ctrl+Alt+Q` | Quit the pet |
 | `Ctrl+Alt+H` | Hide / show the pet |
+| `Ctrl+Alt+G` | Glitch (the "Unexpected token" corruption) |
+| `Ctrl+Alt+D` | Dance |
+| `Ctrl+Alt+B` | Backflip |
+| `Ctrl+Alt+J` | Jump-spin |
+| `Ctrl+Alt+F` | Hero flex |
+| `Ctrl+Alt+Space` | Random move |
+
+The pet also performs a random show-off move on its own after a few seconds of stillness, and one on launch.
 
 ## How it works
 

@@ -73,6 +73,14 @@ app.whenReady().then(() => {
     if (!win || win.isDestroyed()) return;
     win.isVisible() ? win.hide() : win.show();
   });
+  // Manually trigger show-off moves (handy for recording clips)
+  const play = (name) => { if (win && !win.isDestroyed()) win.webContents.send('play', name); };
+  globalShortcut.register('Control+Alt+G', () => play('glitch'));
+  globalShortcut.register('Control+Alt+D', () => play('dance'));
+  globalShortcut.register('Control+Alt+B', () => play('backflip'));
+  globalShortcut.register('Control+Alt+J', () => play('spin'));
+  globalShortcut.register('Control+Alt+F', () => play('flex'));
+  globalShortcut.register('Control+Alt+Space', () => play('random'));
 });
 app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('window-all-closed', () => app.quit());

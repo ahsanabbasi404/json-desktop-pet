@@ -29,14 +29,15 @@ scene.add(base);
 const clock = new THREE.Clock();
 let rig = null, BASE_S = 1;
 const P = {};
+const MATS = [];
 function grab(n) { const o = rig.getObjectByName(n); if (o) P[n] = { o, p: o.position.clone(), s: o.scale.clone() }; }
 
-// idle / special-move state
-let activeAt = 0;              // last time the cursor was actively moving
-let move = null;              // current special move { name, start, dur }
-const IDLE_TRIGGER = 6.5;     // seconds of stillness before a show-off move
-const MOVES = ['spin', 'backflip', 'dance', 'flex'];
-const DUR = { spin: 1.5, backflip: 1.3, dance: 2.8, flex: 1.7 };
+let activeAt = 0;
+let move = null;
+let firstMove = true;
+const IDLE_TRIGGER = 6.5;
+const MOVES = ['spin', 'backflip', 'dance', 'flex', 'glitch'];
+const DUR = { spin: 1.5, backflip: 1.3, dance: 2.8, flex: 1.7, glitch: 1.9 };
 
 new GLTFLoader().load('./mascot.glb', (g) => {
   rig = g.scene;
@@ -49,12 +50,25 @@ new GLTFLoader().load('./mascot.glb', (g) => {
   base.position.y = 0.95;
   base.scale.setScalar(BASE_S);
   ['Hand_1', 'Hand_-1', 'Foot_1', 'Foot_-1', 'Eye_0.34', 'Eye_-0.34'].forEach(grab);
-  // play a "hello" show-off move shortly after launch
-  activeAt = clock.getElapsedTime() - IDLE_TRIGGER + 0.8;
+  rig.traverse(o => {
+    if (o.isMesh && o.material) {
+      const m = o.material;
+      if (!MATS.includes(m)) {
+        m.userData._em = (m.emissive || new THREE.Color(0, 0, 0)).clone();
+        m.userData._ei = (m.emissiveIntensity !== undefined ? m.emissiveIntensity : 1);
+        MATS.push(m);
+      }
+    }
+  });
+  activeAt = clock.getElapsedTime() - IDLE_TRIGGER + 0.8; // "hello" move shortly after launch
 }, undefined, (e) => console.error('GLB load failed', e));
 
 let cur = { dx: -84, dy: -68, speed: 0 };
 if (window.pet) window.pet.onCursor((d) => { cur = d; });
+if (window.pet && window.pet.onPlay) window.pet.onPlay((name) => {
+  const n = (name === 'random') ? MOVES[Math.floor(Math.random() * MOVES.length)] : name;
+  if (DUR[n]) { firstMove = false; move = { name: n, start: clock.getElapsedTime(), dur: DUR[n], forced: true }; }
+});
 
 let runAmt = 0, hopT = -10;
 
@@ -64,8 +78,13 @@ function restLimbs() { ['Hand_1', 'Hand_-1', 'Foot_1', 'Foot_-1'].forEach(n => {
 function setBaseScale(sq) { base.scale.set(BASE_S * (1 + sq * 0.5), BASE_S * (1 - sq), BASE_S * (1 + sq * 0.5)); }
 const easeIO = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
 function blink(t) { const bc = t % 3.4; let sy = 1; if (bc < 0.13) sy = 1 - Math.sin(bc / 0.13 * Math.PI) * 0.9; ['Eye_0.34', 'Eye_-0.34'].forEach(n => { if (P[n]) P[n].o.scale.y = P[n].s.y * sy; }); }
+function tintRed(amt) {
+  for (const m of MATS) {
+    if (amt <= 0) { m.emissive.copy(m.userData._em); m.emissiveIntensity = m.userData._ei; }
+    else { m.emissive.setRGB(1, 0.05, 0.05); m.emissiveIntensity = amt * 2.2; }
+  }
+}
 
-// ---- the show-off moves ----
 function playMove(name, p) {
   base.rotation.set(0, 0, 0);
   restLimbs();
@@ -98,6 +117,37 @@ function playMove(name, p) {
       setY('Hand_1', pop * 0.5); setY('Hand_-1', pop * 0.5);
       base.rotation.z = Math.sin(e * Math.PI * 10) * 0.05 * (1 - e);
     }
+  } else if (name === 'glitch') {
+    // "Unexpected token < in JSON at position 0" — corrupt, crash, and reform
+    if (p < 0.14) {                                   // tension before it breaks
+      const e = p / 0.14;
+      base.rotation.x = -0.12 * e;
+      base.position.y = 0.95 + 0.05 * e;
+      setBaseScale(-0.05 * e);
+      tintRed(0);
+    } else if (p < 0.72) {                            // GLITCH: jitter + red flicker + scatter
+      const e = (p - 0.14) / 0.58;
+      const it = 0.45 + 0.55 * Math.sin(e * Math.PI);
+      base.position.set((Math.random() - 0.5) * 0.18 * it, 0.95 + (Math.random() - 0.5) * 0.18 * it, 0);
+      base.rotation.set((Math.random() - 0.5) * 0.2 * it, (Math.random() - 0.5) * 0.3 * it, (Math.random() - 0.5) * 0.25 * it);
+      const sf = (Math.random() - 0.5) * 0.25 * it;
+      base.scale.set(BASE_S * (1 + sf), BASE_S * (1 - sf * 0.6), BASE_S * (1 + sf));
+      ['Hand_1', 'Hand_-1', 'Foot_1', 'Foot_-1'].forEach(n => {
+        if (P[n]) P[n].o.position.set(P[n].p.x + (Math.random() - 0.5) * 0.16 * it, P[n].p.y + (Math.random() - 0.5) * 0.16 * it, P[n].p.z + (Math.random() - 0.5) * 0.12 * it);
+      });
+      tintRed((Math.random() > 0.35 ? 1 : 0.15) * it);
+    } else if (p < 0.82) {                            // crash / collapse
+      const e = (p - 0.72) / 0.10;
+      base.position.set(0, 0.95 - 0.1 * e, 0);
+      setBaseScale(0.35 * e);
+      tintRed((1 - e) * 0.5);
+    } else {                                          // reform with a relieved bounce
+      const e = (p - 0.82) / 0.18;
+      const pop = Math.sin(e * Math.PI);
+      base.position.set(0, 0.95 + pop * 0.12, 0);
+      setBaseScale(0.35 * (1 - e) - pop * 0.1);
+      tintRed(0);
+    }
   }
 }
 
@@ -110,19 +160,18 @@ function animate() {
     const targetRun = THREE.MathUtils.clamp((cur.speed - 1.5) / 5.0, 0, 1);
     runAmt += (targetRun - runAmt) * 0.12;
 
-    // any real cursor movement cancels a show-off move and resets the idle timer
     const activeNow = cur.speed > 2.2;
-    if (activeNow) { activeAt = t; move = null; }
+    if (activeNow) { activeAt = t; if (move && !move.forced) { move = null; tintRed(0); } }
 
-    // trigger a random show-off move once idle long enough
     if (!move && !activeNow && runAmt < 0.05 && (t - activeAt) > IDLE_TRIGGER) {
-      const name = MOVES[Math.floor(Math.random() * MOVES.length)];
+      const name = firstMove ? 'glitch' : MOVES[Math.floor(Math.random() * MOVES.length)];
+      firstMove = false;
       move = { name, start: t, dur: DUR[name] };
     }
 
     if (move) {
       const p = (t - move.start) / move.dur;
-      if (p >= 1) { move = null; activeAt = t; }
+      if (p >= 1) { move = null; activeAt = t; tintRed(0); }
       else { playMove(move.name, p); blink(t); renderer.render(scene, camera); return; }
     }
 
