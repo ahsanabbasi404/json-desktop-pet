@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, screen, globalShortcut, clipboard } = require('electron');
 const path = require('path');
 
 let win;
@@ -132,6 +132,27 @@ function createWindow() {
     // cursor position relative to the pet's window centre -> used to face the cursor
     win.webContents.send('cursor', { dx: pt.x - cur.x, dy: pt.y - cur.y, speed });
   }, 16);
+
+  // React to JSON on the clipboard: copy valid JSON -> proud flex,
+  // copy broken JSON (trailing comma, single quotes, ...) -> glitch meltdown.
+  let lastClip;
+  try { lastClip = clipboard.readText().trim(); } catch (e) { lastClip = ''; }
+  setInterval(() => {
+    if (!win || win.isDestroyed()) return;
+    let t;
+    try { t = clipboard.readText().trim(); } catch (e) { return; }
+    if (t === lastClip) return;
+    lastClip = t;
+    if (t.length < 2 || t.length > 200000) return;
+    const c = t[0];
+    if (c !== '{' && c !== '[') return; // only judge JSON-shaped text
+    try {
+      JSON.parse(t);
+      win.webContents.send('play', 'flex');   // valid: certified
+    } catch (e) {
+      win.webContents.send('play', 'glitch'); // invalid: he was not fine
+    }
+  }, 700);
 }
 
 app.whenReady().then(() => {

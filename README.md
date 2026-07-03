@@ -10,6 +10,7 @@ A cute 3D **JSON** mascot that lives on your desktop, trails your cursor, turns 
 - **Turns to face** wherever your cursor is.
 - **Idle bob, blinks, and an occasional wave** when you stop moving.
 - **Hops** when the cursor gets close.
+- **Judges your clipboard**: copy valid JSON and he does a proud flex; copy broken JSON (trailing comma, single quotes, unquoted keys...) and he has a full corruption meltdown.
 - Transparent, always-on-top, **click-through** — never blocks what you're doing.
 
 ## Run it
