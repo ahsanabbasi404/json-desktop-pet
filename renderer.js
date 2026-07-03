@@ -26,6 +26,7 @@ const rim = new THREE.DirectionalLight(0xcfe0ff, 1.2); rim.position.set(3, 2, -4
 const base = new THREE.Group();
 scene.add(base);
 
+
 const clock = new THREE.Clock();
 let rig = null, BASE_S = 1;
 const P = {};
@@ -37,7 +38,7 @@ let move = null;
 let firstMove = true;
 const IDLE_TRIGGER = 6.5;
 const MOVES = ['spin', 'backflip', 'dance', 'flex', 'glitch'];
-const DUR = { spin: 1.5, backflip: 1.3, dance: 2.8, flex: 1.7, glitch: 1.9 };
+const DUR = { spin: 1.5, backflip: 1.3, dance: 2.8, flex: 1.7, glitch: 1.9, heroland: 1.8 };
 
 new GLTFLoader().load('./mascot.glb', (g) => {
   rig = g.scene;
@@ -68,6 +69,16 @@ if (window.pet) window.pet.onCursor((d) => { cur = d; });
 if (window.pet && window.pet.onPlay) window.pet.onPlay((name) => {
   const n = (name === 'random') ? MOVES[Math.floor(Math.random() * MOVES.length)] : name;
   if (DUR[n]) { firstMove = false; move = { name: n, start: clock.getElapsedTime(), dur: DUR[n], forced: true }; }
+});
+
+// boom entry state (the main process drops the window from above the screen)
+let entryMode = null;
+if (window.pet && window.pet.onEntry) window.pet.onEntry((d) => {
+  if (d.mode === 'fall') { entryMode = 'fall'; move = null; tintRed(0); firstMove = false; }
+  else if (d.mode === 'land') {
+    entryMode = null;
+    move = { name: 'heroland', start: clock.getElapsedTime(), dur: DUR.heroland, forced: true };
+  } else if (d.mode === 'end') { entryMode = null; }
 });
 
 let runAmt = 0, hopT = -10;
@@ -148,6 +159,29 @@ function playMove(name, p) {
       setBaseScale(0.35 * (1 - e) - pop * 0.1);
       tintRed(0);
     }
+  } else if (name === 'heroland') {
+    // superhero landing: deep crouch, fist to the ground, hold the beat, slow dramatic rise
+    if (p < 0.16) {
+      const e = p / 0.16;
+      base.position.y = 0.95 - 0.16 * e;
+      setBaseScale(0.34 * e);
+      base.rotation.x = 0.3 * e;
+      setY('Hand_1', -0.32 * e); setZ('Hand_1', 0.22 * e);   // fist down, forward
+      setY('Hand_-1', 0.35 * e);                              // other arm swept back-up
+    } else if (p < 0.52) {
+      base.position.y = 0.95 - 0.16;
+      setBaseScale(0.34);
+      base.rotation.x = 0.3;
+      setY('Hand_1', -0.32); setZ('Hand_1', 0.22);
+      setY('Hand_-1', 0.35);
+    } else {
+      const e = easeIO((p - 0.52) / 0.48);
+      base.position.y = 0.95 - 0.16 * (1 - e) + Math.sin(e * Math.PI) * 0.06;
+      setBaseScale(0.34 * (1 - e) - Math.sin(e * Math.PI) * 0.05);
+      base.rotation.x = 0.3 * (1 - e) - 0.08 * Math.sin(e * Math.PI);
+      setY('Hand_1', -0.32 * (1 - e) + 0.4 * Math.sin(e * Math.PI)); setZ('Hand_1', 0.22 * (1 - e));
+      setY('Hand_-1', 0.35 * (1 - e) + 0.4 * Math.sin(e * Math.PI));
+    }
   }
 }
 
@@ -156,6 +190,20 @@ function animate() {
   const t = clock.getElapsedTime();
 
   if (rig) {
+    // boom entry: the window plummets from the sky; pose the pet as a superhero dive
+    if (entryMode === 'fall') {
+      base.position.set(0, 0.95, 0);
+      base.scale.setScalar(BASE_S);
+      restLimbs();
+      base.rotation.set(0.35, 0, Math.sin(t * 22) * 0.05);  // leaning into the dive, slight wobble
+      setY('Hand_1', -0.45); setZ('Hand_1', 0.15);           // fist down, leading the fall
+      setY('Hand_-1', 0.5);                                  // other arm trailing above
+      setY('Foot_1', 0.12); setY('Foot_-1', 0.18);           // legs trailing up
+      blink(t);
+      renderer.render(scene, camera);
+      return;
+    }
+
     const dist = Math.hypot(cur.dx, cur.dy);
     const targetRun = THREE.MathUtils.clamp((cur.speed - 1.5) / 5.0, 0, 1);
     runAmt += (targetRun - runAmt) * 0.12;
@@ -208,8 +256,12 @@ function animate() {
 }
 animate();
 
+// keep pixels-per-world-unit constant so the pet stays the same size when the
+// window is enlarged for the hero entry (the extra height shows more rope instead)
+const PPU = 320 / (2 * 8.8 * Math.tan(THREE.MathUtils.degToRad(15)));
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
+  camera.fov = 2 * THREE.MathUtils.radToDeg(Math.atan(innerHeight / PPU / 2 / 8.8));
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });

@@ -35,6 +35,7 @@ On Windows you can also just double-click **`launch-pet.cmd`**.
 | `Ctrl+Alt+J` | Jump-spin |
 | `Ctrl+Alt+F` | Hero flex |
 | `Ctrl+Alt+Space` | Random move |
+| `Ctrl+Alt+E` (or `Ctrl+Shift+E`) | **Boom entry** — plummets from the sky and superhero-lands next to your cursor with a full-screen comic BOOM: impact flash, shockwave rings, screen cracks, and flying debris |
 
 The pet also performs a random show-off move on its own after a few seconds of stillness, and one on launch.
 

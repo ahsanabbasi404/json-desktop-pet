@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  #root { position: fixed; inset: 0; transition: opacity .35s ease; }
+  #vig {
+    position: absolute; inset: 0; opacity: 0; transition: opacity .28s ease;
+    background: radial-gradient(ellipse at var(--ix) var(--iy), transparent 30%, rgba(0,0,0,.5) 100%);
+  }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+  .line { position: absolute; width: 4px; border-radius: 3px;
+          background: linear-gradient(to bottom, transparent, rgba(255,255,255,.95)); }
+  .ring { position: absolute; border-radius: 50%; border: 12px solid #ffd23f;
+          box-shadow: 0 0 24px rgba(255,180,40,.8), inset 0 0 24px rgba(255,180,40,.5); }
+  .p { position: absolute; border-radius: 50%; background: #ffd23f;
+       box-shadow: 0 0 8px rgba(255,160,20,.9); }
+  #cracks path { stroke: #fff; fill: none; stroke-linecap: round;
+                 filter: drop-shadow(0 0 3px rgba(0,0,0,.9)); }
+  #boom { position: absolute; transform: translate(-50%,-50%) rotate(-7deg) scale(0); opacity: 1; }
+  #boom.pop { animation: pop .26s cubic-bezier(.2,2.2,.3,1) forwards; }
+  #boom.out { transition: transform .18s ease-in, opacity .18s ease-in;
+              transform: translate(-50%,-50%) rotate(-7deg) scale(.6) !important; opacity: 0 !important; }
+  @keyframes pop { to { transform: translate(-50%,-50%) rotate(-7deg) scale(1); } }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="vig"></div>
+  <svg id="cracks" width="100%" height="100%" style="position:absolute;inset:0"></svg>
+  <div id="fxlayer" style="position:absolute;inset:0"></div>
+  <div id="boom">
+    <svg width="560" height="360" viewBox="-280 -180 560 360">
+      <polygon id="burst1" fill="#ffd23f" stroke="#141414" stroke-width="9" stroke-linejoin="round"></polygon>
+      <polygon id="burst2" fill="#ff5a36" stroke="#141414" stroke-width="5" stroke-linejoin="round"></polygon>
+      <text x="0" y="26" text-anchor="middle" font-family="'Arial Black', Impact, sans-serif"
+            font-size="88" font-weight="900" fill="#fff" stroke="#141414" stroke-width="10"
+            paint-order="stroke" letter-spacing="2">BOOM!</text>
+    </svg>
+  </div>
+  <div id="flash"></div>
+</div>
+<script>
+  const q  = new URLSearchParams(location.search);
+  const W  = innerWidth, H = innerHeight;
+  const ix = Math.max(60, Math.min(W - 60, +q.get('x') || W / 2));
+  const iy = Math.max(60, Math.min(H - 60, +q.get('y') || H * 0.62));
+  const IMPACT = 500;                    // ms; must match FALL_T in main.js
+
+  const root = document.getElementById('root');
+  const fx   = document.getElementById('fxlayer');
+  document.getElementById('vig').style.setProperty('--ix', ix + 'px');
+  document.getElementById('vig').style.setProperty('--iy', iy + 'px');
+
+  // comic starburst polygons
+  function star(n, r1, r2, jitter) {
+    const pts = [];
+    for (let i = 0; i < n * 2; i++) {
+      const a = (i / (n * 2)) * Math.PI * 2 - Math.PI / 2;
+      const r = (i % 2 ? r2 : r1) * (1 + (Math.random() - .5) * jitter);
+      pts.push((Math.cos(a) * r * 1.35).toFixed(1) + ',' + (Math.sin(a) * r).toFixed(1));
+    }
+    return pts.join(' ');
+  }
+  document.getElementById('burst1').setAttribute('points', star(12, 165, 92, .18));
+  document.getElementById('burst2').setAttribute('points', star(12, 118, 66, .22));
+  const boom = document.getElementById('boom');
+  boom.style.left = Math.max(230, Math.min(W - 230, ix)) + 'px';
+  boom.style.top  = Math.max(160, Math.min(H - 160, iy - 190)) + 'px';
+
+  // falling speed lines during the anticipation
+  const lines = [];
+  for (let i = 0; i < 14; i++) {
+    const el = document.createElement('div');
+    el.className = 'line';
+    const len = 140 + Math.random() * 200;
+    el.style.height = len + 'px';
+    el.style.left = (ix + (Math.random() * 2 - 1) * 120) + 'px';
+    fx.appendChild(el);
+    lines.push({ el, len, y: -len - Math.random() * 360, v: 2600 + Math.random() * 1600 });
+  }
+
+  // shockwave rings (born at impact)
+  const rings = [];
+  function spawnRing(delay, maxR, dur, bw) { rings.push({ delay, maxR, dur, bw, el: null }); }
+  spawnRing(0, Math.min(W, H) * .55, 620, 14);
+  spawnRing(70, Math.min(W, H) * .42, 540, 10);
+  spawnRing(140, Math.min(W, H) * .30, 460, 7);
+
+  // debris particles (born at impact)
+  const parts = [];
+  for (let i = 0; i < 20; i++) {
+    parts.push({
+      vx: (Math.random() * 2 - 1) * 520,
+      vy: -(120 + Math.random() * 560),
+      r: 3 + Math.random() * 5, el: null
+    });
+  }
+
+  // screen cracks (born at impact)
+  const crackSvg = document.getElementById('cracks');
+  const cracks = [];
+  for (let i = 0; i < 7; i++) {
+    const a = Math.PI * (0.95 + Math.random() * 1.1) + (i / 7) * Math.PI * 2;
+    let x = ix, y = iy, d = 'M' + x.toFixed(1) + ' ' + y.toFixed(1);
+    const segs = 4 + (Math.random() * 3 | 0), step = (90 + Math.random() * 160) / segs;
+    for (let s = 0; s < segs; s++) {
+      x += Math.cos(a) * step + (Math.random() - .5) * 26;
+      y += Math.sin(a) * step + (Math.random() - .5) * 26;
+      d += ' L' + x.toFixed(1) + ' ' + y.toFixed(1);
+    }
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', d);
+    p.setAttribute('stroke-width', (1.6 + Math.random() * 2.2).toFixed(1));
+    crackSvg.appendChild(p);
+    const L = p.getTotalLength();
+    p.style.strokeDasharray = L;
+    p.style.strokeDashoffset = L;
+    p.style.opacity = '0.95';
+    cracks.push(p);
+  }
+
+  const flash = document.getElementById('flash');
+  const t0 = performance.now();
+  let impacted = false;
+
+  function tick(now) {
+    const t = now - t0;
+
+    if (t < IMPACT) {                       // anticipation: streaks race downward
+      if (t > 60) document.getElementById('vig').style.opacity = 1;
+      for (const l of lines) {
+        l.y += l.v * (1 / 60);
+        if (l.y > iy - l.len * .3) l.y = -l.len - Math.random() * 240;
+        l.el.style.transform = 'translateY(' + l.y.toFixed(0) + 'px)';
+      }
+    } else {
+      if (!impacted) {                      // IMPACT FRAME
+        impacted = true;
+        for (const l of lines) l.el.remove();
+        lines.length = 0;
+        flash.style.opacity = .95;
+        flash.style.transition = 'opacity .14s ease-out';
+        requestAnimationFrame(() => (flash.style.opacity = 0));
+        boom.classList.add('pop');
+        for (const c of cracks) {
+          c.style.transition = 'stroke-dashoffset .13s ease-out';
+          c.style.strokeDashoffset = 0;
+        }
+        setTimeout(() => boom.classList.add('out'), 980);
+        setTimeout(() => { for (const c of cracks) { c.style.transition = 'opacity .5s ease'; c.style.opacity = 0; } }, 1250);
+        setTimeout(() => (document.getElementById('vig').style.opacity = 0), 700);
+      }
+      const ti = t - IMPACT;
+
+      // screen shake, decaying over 280ms
+      if (ti < 280) {
+        const a = 13 * (1 - ti / 280);
+        root.style.transform = 'translate(' + ((Math.random() * 2 - 1) * a).toFixed(1) + 'px,' + ((Math.random() * 2 - 1) * a).toFixed(1) + 'px)';
+      } else root.style.transform = '';
+
+      // shockwave rings
+      for (const r of rings) {
+        const tr = ti - r.delay;
+        if (tr < 0) continue;
+        if (!r.el) {
+          r.el = document.createElement('div');
+          r.el.className = 'ring';
+          fx.appendChild(r.el);
+        }
+        const u = Math.min(1, tr / r.dur), e = 1 - Math.pow(1 - u, 3);
+        const rad = r.maxR * e;
+        r.el.style.left = (ix - rad) + 'px';
+        r.el.style.top = (iy - rad * .62) + 'px';   // squashed ellipse: ground shockwave
+        r.el.style.width = rad * 2 + 'px';
+        r.el.style.height = rad * 2 * .62 + 'px';
+        r.el.style.borderWidth = Math.max(2, r.bw * (1 - u)) + 'px';
+        r.el.style.opacity = (1 - u) * .95;
+        if (u >= 1) { r.el.remove(); r.el = null; r.delay = 1e9; }
+      }
+
+      // debris
+      if (ti < 780) {
+        const s = ti / 1000;
+        for (const p of parts) {
+          if (!p.el) { p.el = document.createElement('div'); p.el.className = 'p'; p.el.style.width = p.el.style.height = p.r * 2 + 'px'; fx.appendChild(p.el); }
+          const px = ix + p.vx * s, py = iy + p.vy * s + 1500 * s * s;
+          p.el.style.transform = 'translate(' + px.toFixed(0) + 'px,' + py.toFixed(0) + 'px)';
+          p.el.style.opacity = Math.max(0, 1 - ti / 780);
+        }
+      } else for (const p of parts) if (p.el) { p.el.remove(); p.el = null; }
+    }
+
+    if (t > 1950) root.style.opacity = 0;   // fade everything; main destroys the window after
+    if (t < 2400) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>
